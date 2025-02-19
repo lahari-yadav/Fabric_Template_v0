@@ -1,0 +1,291 @@
+{
+  "properties": {
+    "activities": [
+      {
+        "name": "Lookup_ENV_VARIABLES",
+        "type": "Lookup",
+        "dependsOn": [],
+        "policy": {
+          "timeout": "0.12:00:00",
+          "retry": 0,
+          "retryIntervalInSeconds": 30,
+          "secureOutput": false,
+          "secureInput": false
+        },
+        "typeProperties": {
+          "source": {
+            "type": "DelimitedTextSource",
+            "storeSettings": {
+              "type": "LakehouseReadSettings",
+              "recursive": true,
+              "enablePartitionDiscovery": false
+            },
+            "formatSettings": {
+              "type": "DelimitedTextReadSettings"
+            }
+          },
+          "datasetSettings": {
+            "annotations": [],
+            "linkedService": {
+              "name": "b53e1224_0618_4d8b_994f_bcb2f540f654",
+              "properties": {
+                "annotations": [],
+                "type": "Lakehouse",
+                "typeProperties": {
+                  "workspaceId": "@pipeline().DataFactory",
+                  "artifactId": "@variables('DE_LH_CLEAN_ID')",
+                  "rootFolder": "Files"
+                }
+              }
+            },
+            "type": "DelimitedText",
+            "typeProperties": {
+              "location": {
+                "type": "LakehouseLocation",
+                "fileName": "ENV_INFO.json",
+                "folderPath": "ENV_VARIABLES"
+              },
+              "columnDelimiter": ",",
+              "escapeChar": "\\",
+              "firstRowAsHeader": true,
+              "quoteChar": "\""
+            },
+            "schema": []
+          }
+        }
+      },
+      {
+        "name": "Lookup Consolidated Table",
+        "type": "Lookup",
+        "dependsOn": [
+          {
+            "activity": "Lookup_ENV_VARIABLES",
+            "dependencyConditions": [
+              "Succeeded"
+            ]
+          }
+        ],
+        "policy": {
+          "timeout": "0.12:00:00",
+          "retry": 0,
+          "retryIntervalInSeconds": 30,
+          "secureOutput": false,
+          "secureInput": false
+        },
+        "typeProperties": {
+          "source": {
+            "type": "DataWarehouseSource",
+            "sqlReaderQuery": "SELECT SOURCE,\r\n\tCASE\r\n\t\tWHEN COUNT(CASE WHEN STATUS <> 'SUCCESS' THEN 1 END) > 0 THEN 'FAIL'\r\n\t\tELSE 'SUCCESS'\r\n\tEND AS STATUS,\r\n\tCAST(MIN(STARTTIME) AS TIME(0)) AS STARTTIME,\r\n\tCAST(MAX(ENDTIME) AS TIME(0)) AS ENDTIME,\r\n\tCAST(DATEADD(SECOND, SUM(DATEDIFF(SECOND, '00:00:00', CAST(DURATION AS TIME))), '00:00:00') AS TIME(0)) AS DURATION,\r\n\tRUN_DATE\r\nFROM AUDIT.MAIN_PIPELINE_RUN_DETAILS\r\nWHERE IS_LATEST_RUN = 1\r\nGROUP BY SOURCE, RUN_DATE",
+            "queryTimeout": "02:00:00",
+            "partitionOption": "None"
+          },
+          "firstRowOnly": false,
+          "datasetSettings": {
+            "annotations": [],
+            "linkedService": {
+              "name": "857bb99a_eb97_434d_8a82_ff55dd1a738d",
+              "properties": {
+                "annotations": [],
+                "type": "DataWarehouse",
+                "typeProperties": {
+                  "endpoint": "@activity('Lookup_ENV_VARIABLES').output.firstRow.DW_CONNECTION_STRING",
+                  "artifactId": "@activity('Lookup_ENV_VARIABLES').output.firstRow.DW_WH_AGGREGATE",
+                  "workspaceId": "@pipeline().DataFactory"
+                }
+              }
+            },
+            "type": "DataWarehouseTable",
+            "schema": [],
+            "typeProperties": {}
+          }
+        }
+      },
+      {
+        "name": "Update IS_LATEST_RUNT to 0",
+        "type": "Script",
+        "dependsOn": [
+          {
+            "activity": "Lookup Consolidated Table",
+            "dependencyConditions": [
+              "Succeeded"
+            ]
+          }
+        ],
+        "policy": {
+          "timeout": "0.12:00:00",
+          "retry": 0,
+          "retryIntervalInSeconds": 30,
+          "secureOutput": false,
+          "secureInput": false
+        },
+        "linkedService": {
+          "name": "415a4889_3308_4370_9c92_90d45dcb71c0",
+          "properties": {
+            "annotations": [],
+            "type": "DataWarehouse",
+            "typeProperties": {
+              "endpoint": "@activity('Lookup_ENV_VARIABLES').output.firstRow.DW_CONNECTION_STRING",
+              "artifactId": "@activity('Lookup_ENV_VARIABLES').output.firstRow.DW_WH_AGGREGATE",
+              "workspaceId": "@pipeline().DataFactory"
+            }
+          }
+        },
+        "typeProperties": {
+          "scripts": [
+            {
+              "type": "Query",
+              "text": {
+                "value": "UPDATE AUDIT.MAIN_PIPELINE_RUN_DETAILS\r\nSET IS_LATEST_RUN = 0",
+                "type": "Expression"
+              }
+            }
+          ],
+          "scriptBlockExecutionTimeout": "02:00:00"
+        }
+      },
+      {
+        "name": "ForEach1",
+        "type": "ForEach",
+        "dependsOn": [
+          {
+            "activity": "Update IS_LATEST_RUNT to 0",
+            "dependencyConditions": [
+              "Succeeded"
+            ]
+          }
+        ],
+        "typeProperties": {
+          "items": {
+            "value": "@activity('Lookup Consolidated Table').output.value",
+            "type": "Expression"
+          },
+          "isSequential": true,
+          "activities": [
+            {
+              "name": "Set CURRENT_VAL_ALL",
+              "type": "SetVariable",
+              "dependsOn": [],
+              "policy": {
+                "secureOutput": false,
+                "secureInput": false
+              },
+              "typeProperties": {
+                "variableName": "CURRENT_VAL_ALL",
+                "value": {
+                  "value": "@concat(variables('CONCAT_VAL_ALL'), \n    '</td><td>', item().SOURCE,\n    '</td><td>', \n    if(equals(item().status, 'SUCCESS'), variables('SUCCESS'), variables('FAIL'))\n    ,\n    '</td><td>', item().STARTTIME,\n    '</td><td>', item().ENDTIME,\n    '</td><td>', item().DURATION,\n    '</td><td>', formatDateTime(item().RUN_DATE, 'yyyy-MM-dd')\n,\n'</td></tr>')",
+                  "type": "Expression"
+                }
+              }
+            },
+            {
+              "name": "Set CONCAT_VAL_ALL",
+              "type": "SetVariable",
+              "dependsOn": [
+                {
+                  "activity": "Set CURRENT_VAL_ALL",
+                  "dependencyConditions": [
+                    "Succeeded"
+                  ]
+                }
+              ],
+              "policy": {
+                "secureOutput": false,
+                "secureInput": false
+              },
+              "typeProperties": {
+                "variableName": "CONCAT_VAL_ALL",
+                "value": {
+                  "value": "@variables('CURRENT_VAL_ALL')",
+                  "type": "Expression"
+                }
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "Set TABLE_ALL",
+        "type": "SetVariable",
+        "dependsOn": [
+          {
+            "activity": "ForEach1",
+            "dependencyConditions": [
+              "Succeeded"
+            ]
+          }
+        ],
+        "policy": {
+          "secureOutput": false,
+          "secureInput": false
+        },
+        "typeProperties": {
+          "variableName": "TABLE_ALL",
+          "value": {
+            "value": "@concat(\n  '<p>Summary Pipeline Run Details:</p>',\n  '<table border=\"1\">',\n  '<tr>\n    <th>SOURCE</th>\n    <th>STATUS</th>\n    <th>START_TIME</th>\n    <th>END_TIME</th>\n    <th>DURATION</th>\n    <th>RUN_DATE</th>\n   </tr>',\n  variables('CONCAT_VAL_ALL'),\n  '</table>'\n)",
+            "type": "Expression"
+          }
+        }
+      },
+      {
+        "name": "Office 365 PL_ALL",
+        "type": "Office365Outlook",
+        "dependsOn": [
+          {
+            "activity": "Set TABLE_ALL",
+            "dependencyConditions": [
+              "Succeeded"
+            ]
+          }
+        ],
+        "typeProperties": {
+          "inputs": {
+            "method": "post",
+            "path": "/v2/Mail",
+            "body": {
+              "To": "@activity('Lookup_ENV_VARIABLES').output.firstRow.EMAIL.ACCORDION_DE",
+              "Subject": "All Pipeline Run Details",
+              "Body": "<p>@{variables('TABLE_ALL')}</p>",
+              "Sensitivity": "",
+              "Importance": "Normal"
+            }
+          }
+        }
+      }
+    ],
+    "variables": {
+      "DE_LH_CLEAN_ID": {
+        "type": "String"
+      },
+      "CONCAT_VAL_ALL": {
+        "type": "String"
+      },
+      "CURRENT_VAL_ALL": {
+        "type": "String"
+      },
+      "TABLE_ALL": {
+        "type": "String"
+      },
+      "SUCCESS": {
+        "type": "String",
+        "defaultValue": "<p style=\"color: green;\">SUCCESS</p>"
+      },
+      "FAIL": {
+        "type": "String",
+        "defaultValue": "<p style=\"color: red;\">FAIL</p>"
+      },
+      "SKIPPED": {
+        "type": "String",
+        "defaultValue": "<p style=\"color: orange;\">SKIPPED</p>"
+      }
+    },
+    "logicAppsConnectionPayload": {
+      "id": "/subscriptions/f7cccd55-822e-4145-88cc-1c15e099919a/resourceGroups/connections-cf6b9fab-9075-4a96-9da7-cdd8f4007577/providers/Microsoft.Web/connections/1_4041d3ee-3677-4975-8c4f-9d4d004ac28d_2dc428c4-bcf5-4644-8272-f1df1d9d6e21",
+      "properties": {
+        "api": {
+          "name": "office365",
+          "id": "/subscriptions/f7cccd55-822e-4145-88cc-1c15e099919a/providers/Microsoft.Web/locations/centralindia/managedApis/office365"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,214 @@
+{
+  "properties": {
+    "activities": [
+      {
+        "type": "Lookup",
+        "typeProperties": {
+          "source": {
+            "type": "DataWarehouseSource",
+            "sqlReaderQuery": {
+              "value": "select * from DE_LH_BronzeSilver.dbo.master_control_table where SOURCE = 'Ecommerce'",
+              "type": "Expression"
+            },
+            "partitionOption": "None",
+            "queryTimeout": "02:00:00"
+          },
+          "datasetSettings": {
+            "type": "DataWarehouseTable",
+            "schema": [],
+            "linkedService": {
+              "name": "DW_WH_Gold",
+              "properties": {
+                "type": "DataWarehouse",
+                "typeProperties": {
+                  "artifactId": "46fe7344-b63d-412c-b365-82b86112d1a6",
+                  "endpoint": "o65ez377d7cedaax644ae7xmkq-vopwxt3vsclevhnhzxmpiadvo4.datawarehouse.fabric.microsoft.com",
+                  "workspaceId": "cf6b9fab-9075-4a96-9da7-cdd8f4007577"
+                },
+                "annotations": []
+              }
+            },
+            "annotations": []
+          },
+          "firstRowOnly": false
+        },
+        "policy": {
+          "timeout": "0.12:00:00",
+          "retry": 0,
+          "retryIntervalInSeconds": 30,
+          "secureInput": false,
+          "secureOutput": false
+        },
+        "name": "Table List",
+        "dependsOn": []
+      },
+      {
+        "type": "ForEach",
+        "typeProperties": {
+          "batchCount": 10,
+          "items": {
+            "value": "@activity('Table List').output.value",
+            "type": "Expression"
+          },
+          "activities": [
+            {
+              "type": "Copy",
+              "typeProperties": {
+                "source": {
+                  "type": "DataWarehouseSource",
+                  "sqlReaderQuery": {
+                    "value": "@item().SQL_QUERY",
+                    "type": "Expression"
+                  },
+                  "partitionOption": "None",
+                  "queryTimeout": "02:00:00",
+                  "datasetSettings": {
+                    "type": "DataWarehouseTable",
+                    "typeProperties": {
+                      "schema": "dbo",
+                      "table": "customers"
+                    },
+                    "schema": [],
+                    "linkedService": {
+                      "name": "SOURCE_WH",
+                      "properties": {
+                        "type": "DataWarehouse",
+                        "typeProperties": {
+                          "artifactId": "d86b1b2a-fd96-4beb-b6fb-413cf0ad3fd2",
+                          "endpoint": "o65ez377d7cedaax644ae7xmkq-45dytleom44utdbyx7ssmo26om.datawarehouse.fabric.microsoft.com",
+                          "workspaceId": "ac8947e7-678e-4939-8c38-bfe5263b5e73"
+                        },
+                        "annotations": []
+                      }
+                    },
+                    "annotations": []
+                  }
+                },
+                "sink": {
+                  "type": "ParquetSink",
+                  "formatSettings": {
+                    "type": "ParquetWriteSettings",
+                    "enableVertiParquet": true
+                  },
+                  "storeSettings": {
+                    "type": "LakehouseWriteSettings"
+                  },
+                  "datasetSettings": {
+                    "type": "Parquet",
+                    "typeProperties": {
+                      "location": {
+                        "type": "LakehouseLocation",
+                        "folderPath": {
+                          "value": "@concat('Bronze_Data/',formatDateTime(utcNow(),'yyyy'),'/',formatDateTime(utcNow(),'MM'),'/',formatDateTime(utcNow(), 'dd'),'/',item().SOURCE,'/',item().SOURCE_SCHEMA_NAME)",
+                          "type": "Expression"
+                        },
+                        "fileName": {
+                          "value": "@item().DESTINATION_FILE_NAME",
+                          "type": "Expression"
+                        }
+                      },
+                      "compressionCodec": "snappy"
+                    },
+                    "schema": [],
+                    "linkedService": {
+                      "name": "DE_LH_BronzeSilver",
+                      "properties": {
+                        "type": "Lakehouse",
+                        "typeProperties": {
+                          "artifactId": "b9b95ecf-2250-9ae3-4fad-518bb726adfa",
+                          "workspaceId": "00000000-0000-0000-0000-000000000000",
+                          "rootFolder": "Files"
+                        },
+                        "annotations": []
+                      }
+                    },
+                    "annotations": []
+                  }
+                },
+                "translator": {
+                  "type": "TabularTranslator",
+                  "typeConversion": true,
+                  "typeConversionSettings": {
+                    "allowDataTruncation": true,
+                    "treatBooleanAsNumber": false
+                  }
+                },
+                "enableStaging": false
+              },
+              "policy": {
+                "timeout": "0.12:00:00",
+                "retry": 0,
+                "retryIntervalInSeconds": 30,
+                "secureInput": false,
+                "secureOutput": false
+              },
+              "name": "To Bronze",
+              "dependsOn": []
+            }
+          ]
+        },
+        "name": "ForEach1",
+        "dependsOn": [
+          {
+            "activity": "Table List",
+            "dependencyConditions": [
+              "Succeeded"
+            ]
+          }
+        ]
+      },
+      {
+        "type": "TridentNotebook",
+        "typeProperties": {
+          "notebookId": "19c5ba79-246d-919b-4ef3-d405d021d919",
+          "workspaceId": "00000000-0000-0000-0000-000000000000"
+        },
+        "policy": {
+          "timeout": "0.12:00:00",
+          "retry": 0,
+          "retryIntervalInSeconds": 30,
+          "secureInput": false,
+          "secureOutput": false
+        },
+        "name": "To Silver",
+        "dependsOn": [
+          {
+            "activity": "ForEach1",
+            "dependencyConditions": [
+              "Succeeded"
+            ]
+          }
+        ]
+      },
+      {
+        "type": "TridentNotebook",
+        "typeProperties": {
+          "notebookId": "149a8fa4-650a-8044-40e6-6fe088089170",
+          "workspaceId": "00000000-0000-0000-0000-000000000000"
+        },
+        "policy": {
+          "timeout": "0.12:00:00",
+          "retry": 0,
+          "retryIntervalInSeconds": 30,
+          "secureInput": false,
+          "secureOutput": false
+        },
+        "name": "Update last loads",
+        "dependsOn": [
+          {
+            "activity": "To Silver",
+            "dependencyConditions": [
+              "Succeeded"
+            ]
+          }
+        ]
+      }
+    ],
+    "variables": {
+      "Azure Synapse": {
+        "type": "String",
+        "defaultValue": "0f8e626e-23d7-49c2-87b4-9731066bf07e"
+      }
+    }
+  }
+}

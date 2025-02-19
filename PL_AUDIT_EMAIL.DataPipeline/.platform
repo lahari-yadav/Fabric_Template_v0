@@ -1,0 +1,11 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/gitIntegration/platformProperties/2.0.0/schema.json",
+  "metadata": {
+    "type": "DataPipeline",
+    "displayName": "PL_AUDIT_EMAIL"
+  },
+  "config": {
+    "version": "2.0",
+    "logicalId": "a67d6bb4-b358-bcaa-4021-80650d031981"
+  }
+}

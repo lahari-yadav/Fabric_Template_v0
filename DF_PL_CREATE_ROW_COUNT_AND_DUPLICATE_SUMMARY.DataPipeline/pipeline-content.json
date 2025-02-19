@@ -1,0 +1,461 @@
+{
+  "properties": {
+    "activities": [
+      {
+        "name": "Office 365 Outlook1",
+        "type": "Office365Outlook",
+        "dependsOn": [
+          {
+            "activity": "Set TABLE_ROW_COUNT",
+            "dependencyConditions": [
+              "Succeeded"
+            ]
+          },
+          {
+            "activity": "Set DUPLICATE_SUMMARY_TABLE",
+            "dependencyConditions": [
+              "Succeeded"
+            ]
+          }
+        ],
+        "typeProperties": {
+          "inputs": {
+            "method": "post",
+            "path": "/v2/Mail",
+            "body": {
+              "To": "@concat(activity('Lookup1').output.firstRow.MAIN.ACCORDION_DE,activity('Lookup1').output.firstRow.MAIN.TREDENCE)",
+              "Subject": "Table Row Count & Duplicate Summary",
+              "Body": "<p>@{variables('TABLE_DUPLICATE')}</p>\n<p><br></p>\n<p>@{variables('TABLE_ROW_COUNT')}</p>",
+              "Sensitivity": "",
+              "Importance": "Normal"
+            }
+          }
+        }
+      },
+      {
+        "name": "ForEach1",
+        "type": "ForEach",
+        "dependsOn": [
+          {
+            "activity": "ROW_COUNT_TABLE",
+            "dependencyConditions": [
+              "Succeeded"
+            ]
+          }
+        ],
+        "typeProperties": {
+          "items": {
+            "value": "@activity('ROW_COUNT_TABLE').output.value",
+            "type": "Expression"
+          },
+          "isSequential": true,
+          "activities": [
+            {
+              "name": "Set CURRENT_VAL_ROW_COUNT",
+              "type": "SetVariable",
+              "dependsOn": [],
+              "policy": {
+                "secureOutput": false,
+                "secureInput": false
+              },
+              "typeProperties": {
+                "variableName": "CURRENT_VAL_ROW_COUNT",
+                "value": {
+                  "value": "@concat(variables('CONCAT_VAL_ROW_COUNT'), \n    '<tr><td>', item().TABLE_NAME,\n    '</td><td>', item().PREV_ROW_COUNT,\n    '</td><td>', item().CURRENT_ROW_COUNT,\n    '</td><td>', item().DIFF,\n    '</td></tr>')",
+                  "type": "Expression"
+                }
+              }
+            },
+            {
+              "name": "Set CONCAT_VAL_ROW_COUNT",
+              "type": "SetVariable",
+              "dependsOn": [
+                {
+                  "activity": "Set CURRENT_VAL_ROW_COUNT",
+                  "dependencyConditions": [
+                    "Succeeded"
+                  ]
+                }
+              ],
+              "policy": {
+                "secureOutput": false,
+                "secureInput": false
+              },
+              "typeProperties": {
+                "variableName": "CONCAT_VAL_ROW_COUNT",
+                "value": {
+                  "value": "@variables('CURRENT_VAL_ROW_COUNT')",
+                  "type": "Expression"
+                }
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "Set TABLE_ROW_COUNT",
+        "type": "SetVariable",
+        "dependsOn": [
+          {
+            "activity": "ForEach1",
+            "dependencyConditions": [
+              "Succeeded"
+            ]
+          }
+        ],
+        "policy": {
+          "secureOutput": false,
+          "secureInput": false
+        },
+        "typeProperties": {
+          "variableName": "TABLE_ROW_COUNT",
+          "value": {
+            "value": "@concat(\n  '<p>Row Count Summary:</p>',\n  '<table border=\"1\">',\n  '<tr><th>TABLE_NAME</th><th>PREV_ROW_COUNT</th><th>CURRENT_ROW_COUNT</th><th>DIFFERENCE</th></tr>',\n  variables('CONCAT_VAL_ROW_COUNT'),\n  '</table>'\n)",
+            "type": "Expression"
+          }
+        }
+      },
+      {
+        "name": "ForEach_Duplicates",
+        "type": "ForEach",
+        "dependsOn": [
+          {
+            "activity": "DUPLICATES_SUMMARY Count",
+            "dependencyConditions": [
+              "Succeeded"
+            ]
+          }
+        ],
+        "typeProperties": {
+          "items": {
+            "value": "@activity('DUPLICATES_SUMMARY Count').output.value",
+            "type": "Expression"
+          },
+          "isSequential": true,
+          "activities": [
+            {
+              "name": "Set Current_Val",
+              "type": "SetVariable",
+              "dependsOn": [],
+              "policy": {
+                "secureOutput": false,
+                "secureInput": false
+              },
+              "typeProperties": {
+                "variableName": "Current_Val",
+                "value": {
+                  "value": "@concat(variables('Concat_Val'), '<tr><td>', item().TABLE_NAME, '</td><td>', item().DUPLICATE_COUNT, '</td><td>', item().DISTINCT_COUNT, '</td></tr>')",
+                  "type": "Expression"
+                }
+              }
+            },
+            {
+              "name": "Set Concat_Val",
+              "type": "SetVariable",
+              "dependsOn": [
+                {
+                  "activity": "Set Current_Val",
+                  "dependencyConditions": [
+                    "Succeeded"
+                  ]
+                }
+              ],
+              "policy": {
+                "secureOutput": false,
+                "secureInput": false
+              },
+              "typeProperties": {
+                "variableName": "Concat_Val",
+                "value": {
+                  "value": "@variables('Current_Val')",
+                  "type": "Expression"
+                }
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "Set DUPLICATE_SUMMARY_TABLE",
+        "type": "SetVariable",
+        "dependsOn": [
+          {
+            "activity": "ForEach_Duplicates",
+            "dependencyConditions": [
+              "Succeeded"
+            ]
+          }
+        ],
+        "policy": {
+          "secureOutput": false,
+          "secureInput": false
+        },
+        "typeProperties": {
+          "variableName": "TABLE_DUPLICATE",
+          "value": {
+            "value": "@concat(\n  '<p>Duplicate Records Summary:</p>',\n  '<table border=\"1\">',\n  '<tr><th>TABLE_NAME</th><th>DUPLICATE_COUNT</th><th>DISTINCT_COUNT</th></tr>',\n  variables('Concat_Val'),\n  '</table>'\n)",
+            "type": "Expression"
+          }
+        }
+      },
+      {
+        "name": "Lookup1",
+        "type": "Lookup",
+        "dependsOn": [],
+        "policy": {
+          "timeout": "0.12:00:00",
+          "retry": 0,
+          "retryIntervalInSeconds": 30,
+          "secureOutput": false,
+          "secureInput": false
+        },
+        "typeProperties": {
+          "source": {
+            "type": "JsonSource",
+            "storeSettings": {
+              "type": "LakehouseReadSettings",
+              "recursive": true,
+              "enablePartitionDiscovery": false
+            },
+            "formatSettings": {
+              "type": "JsonReadSettings"
+            }
+          },
+          "datasetSettings": {
+            "annotations": [],
+            "linkedService": {
+              "name": "5e8b670c_089f_494e_b78c_70dcf03a575b",
+              "properties": {
+                "annotations": [],
+                "type": "Lakehouse",
+                "typeProperties": {
+                  "workspaceId": "@pipeline().DataFactory",
+                  "artifactId": "@variables('DE_LH_CLEAN_ID')",
+                  "rootFolder": "Files"
+                }
+              }
+            },
+            "type": "Json",
+            "typeProperties": {
+              "location": {
+                "type": "LakehouseLocation",
+                "fileName": "ENV_INFO.json",
+                "folderPath": "ENV_VARIABLES"
+              }
+            },
+            "schema": {}
+          }
+        }
+      },
+      {
+        "name": "USP_DUPLICATES_SUMMARY",
+        "type": "SqlServerStoredProcedure",
+        "dependsOn": [
+          {
+            "activity": "Lookup1",
+            "dependencyConditions": [
+              "Succeeded"
+            ]
+          }
+        ],
+        "policy": {
+          "timeout": "0.12:00:00",
+          "retry": 0,
+          "retryIntervalInSeconds": 30,
+          "secureOutput": false,
+          "secureInput": false
+        },
+        "typeProperties": {
+          "storedProcedureName": {
+            "value": "AUDIT.USP_DUPLICATES_SUMMARY",
+            "type": "Expression"
+          }
+        },
+        "linkedService": {
+          "name": "148c8e7c_5564_48eb_8249_aa35e35d5134",
+          "properties": {
+            "annotations": [],
+            "type": "DataWarehouse",
+            "typeProperties": {
+              "endpoint": "@activity('Lookup1').output.firstRow.DW_CONNECTION_STRING",
+              "artifactId": "@activity('Lookup1').output.firstRow.DW_WH_AGGREGATE_ID",
+              "workspaceId": "@activity('Lookup1').output.firstRow.WORKSPACE_ID"
+            }
+          }
+        }
+      },
+      {
+        "name": "DUPLICATES_SUMMARY Count",
+        "type": "Lookup",
+        "dependsOn": [
+          {
+            "activity": "USP_DUPLICATES_SUMMARY",
+            "dependencyConditions": [
+              "Succeeded"
+            ]
+          }
+        ],
+        "policy": {
+          "timeout": "0.12:00:00",
+          "retry": 0,
+          "retryIntervalInSeconds": 30,
+          "secureOutput": false,
+          "secureInput": false
+        },
+        "typeProperties": {
+          "source": {
+            "type": "DataWarehouseSource",
+            "sqlReaderQuery": "SELECT TABLE_NAME,\nformat(DUPLICATE_COUNT, 'N0') AS DUPLICATE_COUNT,\nformat(DISTINCT_COUNT, 'N0') AS DISTINCT_COUNT\nFROM [AUDIT].[DUPLICATES_SUMMARY]\nWHERE DUPLICATE_COUNT > 0\nORDER BY DUPLICATE_COUNT DESC\n",
+            "queryTimeout": "02:00:00",
+            "partitionOption": "None"
+          },
+          "firstRowOnly": false,
+          "datasetSettings": {
+            "annotations": [],
+            "linkedService": {
+              "name": "cb92dd78_f703_4002_988c_ef574a45a0e8",
+              "properties": {
+                "annotations": [],
+                "type": "DataWarehouse",
+                "typeProperties": {
+                  "endpoint": "@activity('Lookup1').output.firstRow.DW_CONNECTION_STRING",
+                  "artifactId": "@activity('Lookup1').output.firstRow.DW_WH_AGGREGATE_ID",
+                  "workspaceId": "@activity('Lookup1').output.firstRow.WORKSPACE_ID"
+                }
+              }
+            },
+            "type": "DataWarehouseTable",
+            "schema": [],
+            "typeProperties": {}
+          }
+        }
+      },
+      {
+        "name": "USP_TABLE_COUNT",
+        "type": "SqlServerStoredProcedure",
+        "dependsOn": [
+          {
+            "activity": "Lookup1",
+            "dependencyConditions": [
+              "Succeeded"
+            ]
+          }
+        ],
+        "policy": {
+          "timeout": "0.12:00:00",
+          "retry": 0,
+          "retryIntervalInSeconds": 30,
+          "secureOutput": false,
+          "secureInput": false
+        },
+        "typeProperties": {
+          "storedProcedureName": {
+            "value": "AUDIT.USP_TABLE_COUNT",
+            "type": "Expression"
+          },
+          "storedProcedureParameters": {
+            "IS_PREV_ROW_COUNT": {
+              "value": "0",
+              "type": "String"
+            }
+          }
+        },
+        "linkedService": {
+          "name": "fcdc98ef_69d3_4085_a3d4_2767b1c983db",
+          "properties": {
+            "annotations": [],
+            "type": "DataWarehouse",
+            "typeProperties": {
+              "endpoint": "@activity('Lookup1').output.firstRow.DW_CONNECTION_STRING",
+              "artifactId": "@activity('Lookup1').output.firstRow.DW_WH_AGGREGATE_ID",
+              "workspaceId": "@activity('Lookup1').output.firstRow.WORKSPACE_ID"
+            }
+          }
+        }
+      },
+      {
+        "name": "ROW_COUNT_TABLE",
+        "type": "Lookup",
+        "dependsOn": [
+          {
+            "activity": "USP_TABLE_COUNT",
+            "dependencyConditions": [
+              "Succeeded"
+            ]
+          }
+        ],
+        "policy": {
+          "timeout": "0.12:00:00",
+          "retry": 0,
+          "retryIntervalInSeconds": 30,
+          "secureOutput": false,
+          "secureInput": false
+        },
+        "typeProperties": {
+          "source": {
+            "type": "DataWarehouseSource",
+            "sqlReaderQuery": "SELECT TABLE_NAME,\n\tformat(PREV_ROW_COUNT, 'N0') AS PREV_ROW_COUNT,\n\tformat(CURRENT_ROW_COUNT, 'N0') AS CURRENT_ROW_COUNT,\n\tformat(CURRENT_ROW_COUNT - PREV_ROW_COUNT, 'N0') AS DIFF\nFROM AUDIT.ROW_COUNT_TABLE\nORDER BY (CURRENT_ROW_COUNT - PREV_ROW_COUNT) DESC, TABLE_NAME",
+            "queryTimeout": "02:00:00",
+            "partitionOption": "None"
+          },
+          "firstRowOnly": false,
+          "datasetSettings": {
+            "annotations": [],
+            "linkedService": {
+              "name": "734abb4a_d081_490b_98b5_3424842a837d",
+              "properties": {
+                "annotations": [],
+                "type": "DataWarehouse",
+                "typeProperties": {
+                  "endpoint": "@activity('Lookup1').output.firstRow.DW_CONNECTION_STRING",
+                  "artifactId": "@activity('Lookup1').output.firstRow.DW_WH_AGGREGATE_ID",
+                  "workspaceId": "@activity('Lookup1').output.firstRow.WORKSPACE_ID"
+                }
+              }
+            },
+            "type": "DataWarehouseTable",
+            "schema": [],
+            "typeProperties": {}
+          }
+        }
+      }
+    ],
+    "variables": {
+      "CURRENT_VAL_ROW_COUNT": {
+        "type": "String"
+      },
+      "CONCAT_VAL_ROW_COUNT": {
+        "type": "String"
+      },
+      "TABLE_ROW_COUNT": {
+        "type": "String"
+      },
+      "TABLE_DUPLICATE": {
+        "type": "String"
+      },
+      "Current_Val": {
+        "type": "String"
+      },
+      "Concat_Val": {
+        "type": "String"
+      },
+      "DE_LH_CLEAN_ID": {
+        "type": "String",
+        "defaultValue": "cec2f68c-2f44-4162-b960-3279c336fa5c"
+      },
+      "WORKSPACE_ID": {
+        "type": "String",
+        "defaultValue": "9133e07c-0b02-4274-982a-e73386291dae"
+      }
+    },
+    "logicAppsConnectionPayload": {
+      "id": "/subscriptions/f7cccd55-822e-4145-88cc-1c15e099919a/resourceGroups/connections-cf6b9fab-9075-4a96-9da7-cdd8f4007577/providers/Microsoft.Web/connections/1_26b546bc-fad3-4e80-8b77-9df844c69367_2dc428c4-bcf5-4644-8272-f1df1d9d6e21",
+      "properties": {
+        "api": {
+          "name": "office365",
+          "id": "/subscriptions/f7cccd55-822e-4145-88cc-1c15e099919a/providers/Microsoft.Web/locations/centralindia/managedApis/office365"
+        }
+      }
+    }
+  }
+}

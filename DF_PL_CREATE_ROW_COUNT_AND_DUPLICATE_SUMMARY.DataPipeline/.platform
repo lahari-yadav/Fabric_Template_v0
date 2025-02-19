@@ -1,0 +1,11 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/gitIntegration/platformProperties/2.0.0/schema.json",
+  "metadata": {
+    "type": "DataPipeline",
+    "displayName": "DF_PL_CREATE_ROW_COUNT_AND_DUPLICATE_SUMMARY"
+  },
+  "config": {
+    "version": "2.0",
+    "logicalId": "44c69367-9df8-8b77-4e80-fad326b546bc"
+  }
+}
